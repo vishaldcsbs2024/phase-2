@@ -1,0 +1,425 @@
+{
+  "info": {
+    "name": "GigShield API Collection",
+    "description": "Complete API collection for GigShield parametric insurance platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000/api"
+    },
+    {
+      "key": "TOKEN",
+      "value": ""
+    },
+    {
+      "key": "PARTNER_ID",
+      "value": ""
+    },
+    {
+      "key": "POLICY_ID",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.environment.set('TOKEN', pm.response.json().data.token);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{BASE_URL}}/auth/register",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "register"]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"9876543210\",\n  \"fullName\": \"Priya Sharma\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.environment.set('TOKEN', pm.response.json().data.token);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "login"]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"9876543210\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/auth/profile",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Priya Sharma Updated\",\n  \"email\": \"priya.sharma@example.com\",\n  \"upiId\": \"priya@upi\",\n  \"bankAccount\": \"0123456789\",\n  \"ifscCode\": \"HDFC0001234\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/profile",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "profile"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Policies",
+      "item": [
+        {
+          "name": "Create Policy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.environment.set('POLICY_ID', pm.response.json().data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"premiumWeekly\": 50\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/policies/create",
+              "host": ["{{BASE_URL}}"],
+              "path": ["policies", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Policy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/policies/active",
+              "host": ["{{BASE_URL}}"],
+              "path": ["policies", "active"]
+            }
+          }
+        },
+        {
+          "name": "Get Policy Claims",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/policies/{{POLICY_ID}}/claims",
+              "host": ["{{BASE_URL}}"],
+              "path": ["policies", "{{POLICY_ID}}", "claims"]
+            }
+          }
+        },
+        {
+          "name": "Get Policy Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/policies/{{POLICY_ID}}/stats",
+              "host": ["{{BASE_URL}}"],
+              "path": ["policies", "{{POLICY_ID}}", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Renew Policy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"premiumWeekly\": 75\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/policies/renew",
+              "host": ["{{BASE_URL}}"],
+              "path": ["policies", "renew"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Claims",
+      "item": [
+        {
+          "name": "Create Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{POLICY_ID}}\",\n  \"disruptionType\": \"heavy_rain\",\n  \"location\": \"Mumbai\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/claims/create",
+              "host": ["{{BASE_URL}}"],
+              "path": ["claims", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get My Claims",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/claims/my-claims",
+              "host": ["{{BASE_URL}}"],
+              "path": ["claims", "my-claims"]
+            }
+          }
+        },
+        {
+          "name": "Report Disruption",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"disruptionType\": \"heavy_rain\",\n  \"location\": \"Mumbai\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/claims/report-disruption",
+              "host": ["{{BASE_URL}}"],
+              "path": ["claims", "report-disruption"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payouts",
+      "item": [
+        {
+          "name": "Get My Payouts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/payouts/my-payouts",
+              "host": ["{{BASE_URL}}"],
+              "path": ["payouts", "my-payouts"]
+            }
+          }
+        },
+        {
+          "name": "Get Payout Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/payouts/stats",
+              "host": ["{{BASE_URL}}"],
+              "path": ["payouts", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get Total Payouts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/payouts/total",
+              "host": ["{{BASE_URL}}"],
+              "path": ["payouts", "total"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Disruptions",
+      "item": [
+        {
+          "name": "Record Disruption",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"disruptionType\": \"heavy_rain\",\n  \"location\": \"Mumbai\",\n  \"severity\": 3\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/disruptions/record",
+              "host": ["{{BASE_URL}}"],
+              "path": ["disruptions", "record"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Disruptions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/disruptions/active",
+              "host": ["{{BASE_URL}}"],
+              "path": ["disruptions", "active"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/health",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

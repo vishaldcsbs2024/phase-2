@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @layer base {
   :root {
@@ -101,6 +101,25 @@
   .glass-card {
     @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-sm;
   }
+
+  .animate-payout-pop {
+    animation: payout-pop 260ms ease-out;
+  }
+
+  .animate-satisfaction-pulse {
+    animation: satisfaction-pulse 900ms ease-out;
+  }
+
+  .animate-satisfaction-bar {
+    transform-origin: left;
+    animation: satisfaction-bar 1300ms ease-out;
+  }
+
+  .animate-confetti-fall {
+    animation-name: confetti-fall;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
 }
 
 @keyframes fade-in-up {
@@ -131,5 +150,56 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes payout-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes satisfaction-pulse {
+  0% {
+    transform: scale(0.85);
+    box-shadow: 0 0 0 0 hsl(var(--success) / 0.45);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 16px hsl(var(--success) / 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--success) / 0);
+  }
+}
+
+@keyframes satisfaction-bar {
+  from {
+    transform: scaleX(0);
+    filter: brightness(1.2);
+  }
+  to {
+    transform: scaleX(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(145px) scale(1) rotate(220deg);
+    opacity: 0;
   }
 }
