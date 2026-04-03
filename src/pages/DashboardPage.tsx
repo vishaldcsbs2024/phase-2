@@ -24,7 +24,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Shield,
+  ShieldAlert,
   CloudRain,
   Car,
   Waves,
@@ -537,7 +537,7 @@ export default function DashboardPage() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary-foreground/10 rounded-full -mr-10 -mt-10" />
           <div className="relative">
             <div className="flex items-center gap-2 mb-3">
-              <Shield className="h-5 w-5" />
+              <ShieldAlert className="h-5 w-5" />
               <span className="text-sm font-medium opacity-90">Your Policy</span>
             </div>
             <div className="flex items-center gap-2 mb-4">

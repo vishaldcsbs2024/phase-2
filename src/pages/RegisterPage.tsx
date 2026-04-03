@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { ShieldAlert, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
 
 const WORK_TYPES = ["Delivery", "Driver", "Construction", "Domestic Help", "Street Vendor", "Other"];
 const CITIES = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Pune", "Kolkata", "Ahmedabad"];
@@ -53,7 +53,7 @@ export default function RegisterPage() {
         {/* Logo */}
         <div className="flex items-center gap-2 justify-center mb-8">
           <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
-            <Shield className="h-5 w-5 text-primary-foreground" />
+            <ShieldAlert className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className="text-xl font-bold text-foreground">Protect Your Worker</span>
         </div>
