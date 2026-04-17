@@ -1,7 +1,13 @@
 import { disruptionModel } from '../models/Disruption.js';
 import axios from 'axios';
+// @ts-ignore - Import old JavaScript service for backward compatibility
+import { simulateDisruption as simulateDisruptionOld } from './disruptionService.js';
 
 export const disruptionService = {
+  async simulateDisruption(payload: Record<string, any>) {
+    return simulateDisruptionOld(payload);
+  },
+
   async recordDisruption(disruptionType: string, location: string, severity: number = 1) {
     const disruption = await disruptionModel.create({
       disruption_type: disruptionType,

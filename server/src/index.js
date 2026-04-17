@@ -10,8 +10,14 @@ const errorHandler = require('./middleware/errorHandler');
 const partnersRouter = require('./routes/partners');
 const premiumRouter = require('./routes/premium');
 const claimsRouter = require('./routes/claims');
+const payoutsRouter = require('./routes/payouts');
 const demoRouter = require('./routes/demo');
 const aiRouter = require('./routes/ai');
+const riskRouter = require('./routes/risk');
+const fraudRouter = require('./routes/fraud');
+const disruptionRouter = require('./routes/disruption');
+const notificationsRouter = require('./routes/notifications');
+const webhookRouter = require('./routes/webhook');
 
 const app = express();
 
@@ -24,7 +30,13 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000, // keep development flows responsive during repeated testing
+  skip: (req) => [
+    '/api/disruption/simulate',
+    '/api/claims/my-claims',
+    '/api/claims/history',
+    '/api/claims/',
+  ].some((path) => req.originalUrl.startsWith(path)),
 });
 app.use('/api/', limiter);
 
@@ -41,8 +53,14 @@ app.get('/api/health', (req, res) => {
 app.use('/api/partners', partnersRouter);
 app.use('/api/premium', premiumRouter);
 app.use('/api/claims', claimsRouter);
+app.use('/api/payouts', payoutsRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/risk', riskRouter);
+app.use('/api/fraud', fraudRouter);
+app.use('/api/disruption', disruptionRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/webhook', webhookRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -81,7 +99,14 @@ const startServer = async () => {
       console.log(`  POST   /api/premium/enroll (protected)`);
       console.log(`  GET    /api/claims/my-claims (protected)`);
       console.log(`  POST   /api/claims/manual (protected)`);
+      console.log(`  GET    /api/payouts/my-payouts`);
       console.log(`  GET    /api/demo/trigger-scenario`);
+      console.log(`  POST   /api/risk/evaluate`);
+      console.log(`  POST   /api/fraud/analyze`);
+      console.log(`  POST   /api/disruption/simulate`);
+      console.log(`  GET    /api/disruption/active`);
+      console.log(`  POST   /api/webhook/payment-success`);
+      console.log(`  GET    /api/notifications/feed`);
       console.log(`\n🤖 AI FEATURES (NEW):`);
       console.log(`  POST   /api/ai/ai-quote (Dynamic ML-based pricing)`);
       console.log(`  POST   /api/ai/disruption-check (5+ automated triggers)`);

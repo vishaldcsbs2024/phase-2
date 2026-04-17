@@ -3,6 +3,15 @@ import { disruptionService } from '../services/disruption.service.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 
 export const disruptionController = {
+  async simulateDisruption(req: Request, res: Response) {
+    try {
+      const result = await disruptionService.simulateDisruption(req.body || {});
+      res.json(successResponse(result, 'Disruption simulated'));
+    } catch (error: any) {
+      res.status(500).json(errorResponse(error.message));
+    }
+  },
+
   async recordDisruption(req: Request, res: Response) {
     try {
       const { disruptionType, location, severity } = req.body;

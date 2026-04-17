@@ -5,6 +5,7 @@ export interface User {
   workType: string;
   weeklyIncome: number;
   city: string;
+  token?: string;
 }
 
 export interface Policy {
@@ -77,7 +78,7 @@ export interface ExplainabilitySnapshot {
 
 export interface ClaimTimelineStep {
   id: string;
-  stage: "detected" | "auto-filed" | "approved" | "paid";
+  stage: "detected" | "auto-filed" | "approved" | "paid" | "risk-evaluated" | "fraud-checked" | "processing" | "rejected" | "manual-review";
   label: string;
   at: string;
   done: boolean;
@@ -90,8 +91,105 @@ export interface Claim {
   date: string;
   event: string;
   amount: number;
-  status: "processed" | "pending";
+  status: "processed" | "pending" | "approved" | "rejected" | "manual_review" | "processing";
   timeline?: ClaimTimelineStep[];
+}
+
+export interface GigShieldNotification {
+  id: string;
+  type: "info" | "success" | "warning";
+  title: string;
+  message: string;
+  amount?: number | null;
+  claimId?: string | null;
+  payoutId?: string | null;
+  disruptionId?: string | null;
+  timestamp: string;
+}
+
+export interface GigShieldRiskEvaluation {
+  riskScore: number;
+  claimProbability: number;
+  confidenceScore: number;
+  factors?: {
+    weatherScore: number;
+    locationScore: number;
+    trafficScore: number;
+    historyScore: number;
+    incomeScore: number;
+  };
+}
+
+export interface GigShieldFraudAnalysis {
+  fraudScore: number;
+  flags: string[];
+  decision: "SAFE" | "SUSPICIOUS" | "FRAUD";
+}
+
+export interface GigShieldPayout {
+  id: string;
+  claim_id: string;
+  partner_id?: string | null;
+  user_id?: string | null;
+  payout_amount: number;
+  amount?: number | null;
+  payout_date?: string | null;
+  status: "pending" | "processing" | "completed";
+  bank_reference?: string | null;
+  gateway_reference?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GigShieldDisruption {
+  id: string;
+  disruption_type: string;
+  location: string;
+  severity_level?: number;
+  detected_at: string;
+  resolved_at?: string | null;
+  status?: string;
+  risk_score?: number;
+  claim_id?: string | null;
+}
+
+export interface GigShieldClaimRecord {
+  id: string;
+  policy_id?: string | null;
+  partner_id?: string | null;
+  user_id?: string | null;
+  disruption_id?: string | null;
+  claim_type?: string | null;
+  disruption_type?: string | null;
+  location?: string | null;
+  daily_payout?: number | null;
+  risk_score?: number | null;
+  fraud_score?: number | null;
+  decision?: string | null;
+  confidence_score?: number | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+  reasoning_json?: string | null;
+}
+
+export interface GigShieldSimulationResult {
+  disruption: GigShieldDisruption;
+  risk: GigShieldRiskEvaluation;
+  autoClaimTriggered: boolean;
+  claim: GigShieldClaimRecord | null;
+  fraud: GigShieldFraudAnalysis | null;
+  payout: GigShieldPayout | null;
+  reasoning: string[];
+  claimStatus: string;
+}
+
+export interface GigShieldDashboardSnapshot {
+  risk: GigShieldRiskEvaluation;
+  disruptions: GigShieldDisruption[];
+  claims: GigShieldClaimRecord[];
+  payouts: GigShieldPayout[];
+  notifications: GigShieldNotification[];
 }
 
 export interface RegisterData {

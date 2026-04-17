@@ -7,4 +7,5 @@ export const claimRoutes = Router();
 claimRoutes.post('/create', authMiddleware, claimController.createClaim);
 claimRoutes.get('/my-claims', authMiddleware, claimController.getPartnerClaims);
 claimRoutes.post('/:claimId/approve', claimController.approveClaim);
+claimRoutes.post('/:claimId/process', claimController.processClaim);
 claimRoutes.post('/report-disruption', claimController.reportDisruption);

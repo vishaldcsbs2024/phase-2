@@ -53,6 +53,16 @@ export const claimController = {
     }
   },
 
+  async processClaim(req: Request, res: Response) {
+    try {
+      const { claimId } = req.params;
+      const result = await claimService.processExistingClaim(claimId, req.body || {});
+      res.json(successResponse(result, 'Claim processed successfully'));
+    } catch (error: any) {
+      res.status(400).json(errorResponse(error.message));
+    }
+  },
+
   async reportDisruption(req: Request, res: Response) {
     try {
       const { disruptionType, location } = req.body;

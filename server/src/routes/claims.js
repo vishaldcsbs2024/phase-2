@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { query } = require('../config/database');
 const { verifyToken } = require('../middleware/auth');
 const { runFraudChecks } = require('../services/fraudDetector');
+const { createClaimFromDisruption, getClaimById, processExistingClaim } = require('../services/claimService');
 
 const router = express.Router();
 
@@ -21,6 +22,37 @@ router.get('/my-claims', verifyToken, async (req, res, next) => {
         total: result.rows.length
       },
       error: ''
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /history
+router.get('/history', async (req, res, next) => {
+  try {
+    const userId = req.query.userId || req.headers['x-user-id'];
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: 'userId is required',
+      });
+    }
+
+    const result = await query(
+      'SELECT * FROM claims WHERE user_id = ? OR partner_id = ? ORDER BY created_at DESC LIMIT 50',
+      [String(userId), String(userId)],
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        claims: result.rows,
+        total: result.rows.length,
+      },
+      error: '',
     });
   } catch (error) {
     next(error);
@@ -90,6 +122,81 @@ router.post('/manual', verifyToken, async (req, res, next) => {
         }
       },
       error: ''
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /auto-trigger
+router.post('/auto-trigger', async (req, res, next) => {
+  try {
+    const result = await createClaimFromDisruption({
+      userId: req.body.userId || req.user?.id || null,
+      partnerId: req.body.partnerId || req.user?.id || null,
+      policyId: req.body.policyId || null,
+      city: req.body.city || 'Mumbai',
+      location: req.body.location || req.body.city || 'Mumbai',
+      disruptionType: req.body.disruptionType || 'rainstorm',
+      source: req.body.source || 'manual-trigger',
+      weather: req.body.weather,
+      traffic: req.body.traffic,
+      locationRisk: req.body.locationRisk,
+      pastClaims: req.body.pastClaims,
+      incomePattern: req.body.incomePattern,
+      currentGps: req.body.currentGps,
+      historicalLocations: req.body.historicalLocations,
+      currentIncome: req.body.currentIncome,
+      last7DayAverageIncome: req.body.last7DayAverageIncome,
+      disruptionDetected: true,
+      amount: req.body.amount,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      error: '',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /timeline/:claimId
+router.get('/timeline/:claimId', async (req, res, next) => {
+  try {
+    const claim = await getClaimById(req.params.claimId);
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: 'Claim not found',
+      });
+    }
+
+    const reasoning = claim.reasoning_json ? JSON.parse(claim.reasoning_json) : [];
+    res.status(200).json({
+      success: true,
+      data: {
+        claim,
+        reasoning,
+      },
+      error: '',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /:claimId/process
+router.post('/:claimId/process', async (req, res, next) => {
+  try {
+    const result = await processExistingClaim(req.params.claimId, req.body || {});
+    res.status(200).json({
+      success: true,
+      data: result,
+      error: '',
     });
   } catch (error) {
     next(error);
