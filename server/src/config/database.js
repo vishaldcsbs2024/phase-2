@@ -180,6 +180,44 @@ const initializeDatabase = async () => {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS fraud_checks (
+          id TEXT PRIMARY KEY,
+          claim_id TEXT,
+          user_id TEXT,
+          partner_id TEXT,
+          fraud_probability REAL,
+          fraud_score REAL,
+          decision TEXT,
+          features_json TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          partner_id TEXT,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          amount REAL,
+          claim_id TEXT,
+          payout_id TEXT,
+          disruption_id TEXT,
+          read INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS admin_rules (
+          id TEXT PRIMARY KEY,
+          key TEXT UNIQUE NOT NULL,
+          value REAL NOT NULL,
+          description TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
       `, async (err) => {
         if (err) {
           console.error('Database initialization error:', err);
@@ -291,6 +329,54 @@ const initializeDatabase = async () => {
             metadata_json: 'TEXT',
             updated_at: 'DATETIME',
           });
+
+          await ensureColumns('fraud_checks', {
+            claim_id: 'TEXT',
+            user_id: 'TEXT',
+            partner_id: 'TEXT',
+            fraud_probability: 'REAL',
+            fraud_score: 'REAL',
+            decision: 'TEXT',
+            features_json: 'TEXT',
+            updated_at: 'DATETIME',
+          });
+
+          await ensureColumns('notifications', {
+            user_id: 'TEXT',
+            partner_id: 'TEXT',
+            type: 'TEXT',
+            title: 'TEXT',
+            message: 'TEXT',
+            amount: 'REAL',
+            claim_id: 'TEXT',
+            payout_id: 'TEXT',
+            disruption_id: 'TEXT',
+            read: 'INTEGER DEFAULT 0',
+            updated_at: 'DATETIME',
+          });
+
+          await ensureColumns('admin_rules', {
+            key: 'TEXT',
+            value: 'REAL',
+            description: 'TEXT',
+            updated_at: 'DATETIME',
+          });
+
+          await query(
+            `INSERT OR IGNORE INTO admin_rules (id, key, value, description, created_at, updated_at)
+             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            ['rule-risk-threshold', 'risk_threshold', 65, 'Minimum risk score to auto approve claims'],
+          );
+          await query(
+            `INSERT OR IGNORE INTO admin_rules (id, key, value, description, created_at, updated_at)
+             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            ['rule-fraud-threshold', 'fraud_threshold', 55, 'Fraud score above this requires rejection/manual review'],
+          );
+          await query(
+            `INSERT OR IGNORE INTO admin_rules (id, key, value, description, created_at, updated_at)
+             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            ['rule-payout-limit', 'payout_limit', 500, 'Maximum payout cap for auto-processed claims'],
+          );
 
           console.log('✓ Database tables initialized');
           resolve();

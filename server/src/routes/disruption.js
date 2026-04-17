@@ -1,11 +1,20 @@
 const express = require('express');
 const { simulateDisruption, getActiveDisruptions, resolveDisruption } = require('../services/disruptionService');
+const { verifyToken } = require('../middleware/auth');
+const { runWeatherAutomation } = require('../services/weatherAutomationService');
+const { emitRealtimeEvent } = require('../realtime/socketBus');
 
 const router = express.Router();
 
-router.post('/simulate', async (req, res, next) => {
+router.post('/simulate', verifyToken, async (req, res, next) => {
   try {
     const result = await simulateDisruption(req.body || {});
+    emitRealtimeEvent('disruption:new', {
+      id: result?.disruption?.id,
+      type: result?.disruption?.type || result?.disruption?.disruption_type,
+      location: result?.disruption?.location,
+      severity: result?.disruption?.severity || result?.disruption?.severity_level,
+    });
 
     res.status(200).json({
       success: true,
@@ -17,7 +26,7 @@ router.post('/simulate', async (req, res, next) => {
   }
 });
 
-router.get('/active', async (req, res, next) => {
+router.get('/active', verifyToken, async (req, res, next) => {
   try {
     const disruptions = await getActiveDisruptions();
 
@@ -31,7 +40,7 @@ router.get('/active', async (req, res, next) => {
   }
 });
 
-router.post('/:disruptionId/resolve', async (req, res, next) => {
+router.post('/:disruptionId/resolve', verifyToken, async (req, res, next) => {
   try {
     const disruption = await resolveDisruption(req.params.disruptionId);
 
@@ -43,9 +52,27 @@ router.post('/:disruptionId/resolve', async (req, res, next) => {
       });
     }
 
+    emitRealtimeEvent('disruption:resolved', {
+      id: disruption.id,
+      status: disruption.status,
+    });
+
     res.status(200).json({
       success: true,
       data: disruption,
+      error: '',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/weather-scan', verifyToken, async (req, res, next) => {
+  try {
+    const events = await runWeatherAutomation();
+    res.status(200).json({
+      success: true,
+      data: { events, triggered: events.length },
       error: '',
     });
   } catch (error) {

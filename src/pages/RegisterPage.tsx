@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { registerUser } from "@/services/gigshieldApi";
+import { loginUser, registerUser } from "@/services/gigshieldApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShieldAlert, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { ShieldAlert, ArrowRight, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 
 const WORK_TYPES = ["Delivery", "Driver", "Construction", "Domestic Help", "Street Vendor", "Other"];
 const CITIES = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Pune", "Kolkata", "Ahmedabad"];
@@ -14,6 +14,7 @@ const CITIES = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Pune", 
 export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [smartPrefillUsed, setSmartPrefillUsed] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", workType: "", weeklyIncome: "", city: "" });
   const { login } = useAuth();
@@ -26,11 +27,37 @@ export default function RegisterPage() {
     : form.city;
 
   const handleSubmit = async () => {
+    setError(null);
     setLoading(true);
     try {
       const user = await registerUser({ ...form, weeklyIncome: Number(form.weeklyIncome) });
       login(user);
       navigate("/dashboard");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Registration failed. Please try again.";
+
+      // If phone already exists, seamlessly sign in with the deterministic onboarding password.
+      if (message.toLowerCase().includes("already registered")) {
+        try {
+          const user = await loginUser({ phone: form.phone });
+          login({
+            ...user,
+            name: form.name || user.name,
+            workType: form.workType || user.workType,
+            city: form.city || user.city,
+            weeklyIncome: Number(form.weeklyIncome) || user.weeklyIncome,
+          });
+          navigate("/dashboard");
+          return;
+        } catch (loginErr) {
+          const loginMessage = loginErr instanceof Error ? loginErr.message : "Unable to sign in with existing account.";
+          setError(loginMessage);
+          console.error("Auto-login after duplicate phone failed:", loginErr);
+        }
+      } else {
+        setError(message);
+        console.error("Registration error:", err);
+      }
     } finally {
       setLoading(false);
     }
@@ -68,6 +95,16 @@ export default function RegisterPage() {
         </div>
         <p className="text-sm text-muted-foreground text-center mb-3">Step {step} of 3</p>
         <p className="text-xs text-muted-foreground text-center mb-6">Mobile-first onboarding: finish in under 60 seconds</p>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-900">Registration Error</p>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
 
         {step === 1 && !smartPrefillUsed ? (
           <Button variant="outline" className="w-full mb-4" onClick={applySmartPrefill}>
@@ -128,15 +165,14 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-3 mt-6 md:static fixed left-0 right-0 bottom-0 p-4 bg-background/95 backdrop-blur border-t border-border md:p-0 md:bg-transparent md:border-0 md:backdrop-blur-0">
             {step > 1 && (
-              <Button variant="outline" onClick={() => setStep(s => s - 1)} className="flex-1 h-11">
+              <Button variant="outline" onClick={() => { setError(null); setStep(s => s - 1); }} className="flex-1 h-11">
                 <ArrowLeft className="h-4 w-4 mr-1" /> Back
               </Button>
             )}
             {step < 3 ? (
-              <Button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="flex-1 h-11">
+              <Button onClick={() => { setError(null); setStep(s => s + 1); }} disabled={!canNext} className="flex-1 h-11">
                 Next <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
             ) : (

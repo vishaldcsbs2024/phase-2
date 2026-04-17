@@ -9,6 +9,9 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import RegisterPage from "./pages/RegisterPage";
 import GigShieldDashboardPage from "./pages/GigShieldDashboardPage";
 import GigShieldClaimsPage from "./pages/GigShieldClaimsPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import SettingsPage from "./pages/SettingsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +68,9 @@ const App = () => (
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/dashboard" element={<ProtectedRoute><GigShieldDashboardPage /></ProtectedRoute>} />
               <Route path="/claims" element={<ProtectedRoute><GigShieldClaimsPage /></ProtectedRoute>} />
+              <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AppErrorBoundary>

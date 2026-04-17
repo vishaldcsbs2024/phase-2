@@ -1,12 +1,14 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { io } from "socket.io-client";
 import { ArrowLeft, BadgeCheck, Clock3, ShieldAlert, Wallet, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/AuthContext";
 import { getClaims, getPayouts } from "@/services/gigshieldApi";
+import SaaSSidebar from "@/components/layout/SaaSSidebar";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
@@ -21,17 +23,22 @@ const statusTone = (status: string) => {
 export default function GigShieldClaimsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [eventFilter, setEventFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState<"latest" | "oldest" | "amount">("latest");
 
   const claimsQuery = useQuery({
     queryKey: ["gigshield-claims-history", user?.id],
-    queryFn: () => getClaims(user?.id),
+    queryFn: () => getClaims(),
     enabled: Boolean(user?.id),
     refetchInterval: 6000,
   });
 
   const payoutsQuery = useQuery({
     queryKey: ["gigshield-claims-payouts", user?.id],
-    queryFn: () => getPayouts(user?.id),
+    queryFn: () => getPayouts(),
     enabled: Boolean(user?.id),
     refetchInterval: 6000,
   });
@@ -47,10 +54,57 @@ export default function GigShieldClaimsPage() {
   const processedCount = claims.filter((claim) => claim.status === "approved" || claim.status === "completed").length;
   const rejectedCount = claims.filter((claim) => claim.status === "rejected").length;
   const totalCredited = payouts.reduce((sum, payout) => sum + Number(payout.payout_amount || payout.amount || 0), 0);
+  const eventTypes = useMemo(
+    () => Array.from(new Set(claims.map((claim) => (claim.claim_type ?? claim.disruption_type ?? "unknown").toLowerCase()))),
+    [claims],
+  );
+
+  const filteredClaims = useMemo(() => {
+    const byFilter = claims.filter((claim) => {
+      const eventType = (claim.claim_type ?? claim.disruption_type ?? "unknown").toLowerCase();
+      const matchesStatus = statusFilter === "all" || claim.status === statusFilter;
+      const matchesEvent = eventFilter === "all" || eventType === eventFilter;
+      const haystack = `${claim.id} ${claim.location ?? ""} ${eventType}`.toLowerCase();
+      const matchesSearch = !searchTerm || haystack.includes(searchTerm.toLowerCase());
+      return matchesStatus && matchesEvent && matchesSearch;
+    });
+
+    return [...byFilter].sort((left, right) => {
+      if (sortBy === "amount") {
+        return Number(right.daily_payout ?? 0) - Number(left.daily_payout ?? 0);
+      }
+
+      const leftDate = new Date(left.created_at ?? 0).getTime();
+      const rightDate = new Date(right.created_at ?? 0).getTime();
+      return sortBy === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+    });
+  }, [claims, eventFilter, searchTerm, sortBy, statusFilter]);
+
+  useEffect(() => {
+    const socket = io("http://localhost:3001", {
+      transports: ["websocket"],
+    });
+
+    const refreshRealtime = () => {
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-claims-history", user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-claims-payouts", user?.id] });
+    };
+
+    socket.on("claim:status", refreshRealtime);
+    socket.on("payout:processed", refreshRealtime);
+
+    return () => {
+      socket.off("claim:status", refreshRealtime);
+      socket.off("payout:processed", refreshRealtime);
+      socket.disconnect();
+    };
+  }, [queryClient, user?.id]);
 
   return (
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-slate-100 text-slate-900">
-      <div className="mx-auto min-h-[100dvh] max-w-6xl px-4 pb-14 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[100dvh] max-w-[1440px] gap-6 px-4 pb-14 pt-6 sm:px-6 lg:px-8">
+        <SaaSSidebar />
+        <div className="min-w-0 flex-1">
         <div className="mb-6 flex items-center justify-between gap-4 rounded-[28px] border border-white/15 bg-slate-950/80 px-5 py-4 text-white shadow-[0_20px_60px_-30px_rgba(0,0,0,0.65)] backdrop-blur">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-emerald-300/80">GigShield</p>
@@ -68,6 +122,51 @@ export default function GigShieldClaimsPage() {
           <SummaryCard icon={<Wallet className="h-4 w-4" />} title="Total credited" value={formatCurrency(totalCredited)} />
         </div>
 
+        <div className="mt-5 grid gap-3 rounded-[24px] border border-slate-200 bg-white/90 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search claim id/location"
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400"
+          />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            title="Filter by status"
+            aria-label="Filter by status"
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400"
+          >
+            <option value="all">All status</option>
+            <option value="approved">Approved</option>
+            <option value="manual_review">Manual review</option>
+            <option value="rejected">Rejected</option>
+            <option value="processing">Processing</option>
+          </select>
+          <select
+            value={eventFilter}
+            onChange={(event) => setEventFilter(event.target.value)}
+            title="Filter by event type"
+            aria-label="Filter by event type"
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400"
+          >
+            <option value="all">All events</option>
+            {eventTypes.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as "latest" | "oldest" | "amount")}
+            title="Sort claims"
+            aria-label="Sort claims"
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400"
+          >
+            <option value="latest">Sort: latest</option>
+            <option value="oldest">Sort: oldest</option>
+            <option value="amount">Sort: payout amount</option>
+          </select>
+        </div>
+
         <div className="mt-6 space-y-4">
           {claimsQuery.isLoading ? (
             <div className="space-y-3">
@@ -75,14 +174,14 @@ export default function GigShieldClaimsPage() {
               <Skeleton className="h-28 w-full rounded-[24px]" />
               <Skeleton className="h-28 w-full rounded-[24px]" />
             </div>
-          ) : claims.length === 0 ? (
+          ) : filteredClaims.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-slate-300 bg-white/80 p-8 text-center shadow-sm">
               <BadgeCheck className="mx-auto h-9 w-9 text-emerald-700" />
-              <p className="mt-3 text-lg font-bold text-slate-950">No claims yet</p>
-              <p className="mt-1 text-sm text-slate-600">Run a simulation from the dashboard and the claim history will populate here.</p>
+              <p className="mt-3 text-lg font-bold text-slate-950">No claims match the current filters</p>
+              <p className="mt-1 text-sm text-slate-600">Try resetting filters or run a new simulation from the dashboard.</p>
             </div>
           ) : (
-            claims.map((claim) => {
+            filteredClaims.map((claim) => {
               const payout = payoutMap.get(claim.id);
               const reasoning = claim.reasoning_json ? safeParseReasoning(claim.reasoning_json) : [];
 
@@ -140,6 +239,7 @@ export default function GigShieldClaimsPage() {
               );
             })
           )}
+        </div>
         </div>
       </div>
     </div>

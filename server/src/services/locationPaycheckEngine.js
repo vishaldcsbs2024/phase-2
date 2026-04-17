@@ -1,5 +1,10 @@
 const axios = require('axios');
 
+const CHENNAI_COORDS = {
+  latitude: 13.0827,
+  longitude: 80.2707,
+};
+
 const reasonRules = {
   heavy_rain: { multiplier: 0.35, floor: 0.45, label: 'Heavy rain disruption' },
   flood: { multiplier: 0.5, floor: 0.5, label: 'Flood/waterlogging disruption' },
@@ -73,6 +78,82 @@ function getSatelliteEvidenceUrl(latitude, longitude, zoom = 15) {
 }
 
 async function getWeatherSnapshot(latitude, longitude) {
+  const apiKey = process.env.WEATHER_API_KEY;
+
+  if (apiKey) {
+    try {
+      const response = await axios.get('https://api.weatherapi.com/v1/forecast.json', {
+        params: {
+          key: apiKey,
+          q: `${latitude},${longitude}`,
+          days: 1,
+          aqi: 'no',
+          alerts: 'no',
+        },
+        timeout: 6000,
+      });
+
+      const data = response.data || {};
+      const current = data.current || {};
+      const forecastDay = data.forecast?.forecastday?.[0] || {};
+      const rainChance = Number(forecastDay.day?.daily_chance_of_rain || 0);
+      const precipMm = Number(current.precip_mm || 0);
+      const windKmh = Number(current.wind_kph || 0);
+      const weatherSeverity = Math.min(
+        1,
+        (precipMm / 20) +
+        (rainChance / 100) +
+        (windKmh / 90)
+      );
+
+      return {
+        source: 'WeatherAPI.com',
+        temperature_c: Number(current.temp_c || 0),
+        precipitation_mm: precipMm,
+        rain_probability_pct: Math.round(rainChance),
+        wind_speed_kmh: Number(windKmh.toFixed(1)),
+        weather_code: current.condition?.code || null,
+        severity_score: Number(weatherSeverity.toFixed(2)),
+      };
+    } catch (error) {
+      // Fall through to OpenWeatherMap, then Open-Meteo.
+    }
+
+    try {
+      const response = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
+        params: {
+          lat: latitude,
+          lon: longitude,
+          appid: apiKey,
+          units: 'metric',
+        },
+        timeout: 6000,
+      });
+
+      const data = response.data || {};
+      const rain1h = Number((data.rain && data.rain['1h']) || 0);
+      const windKmh = Number(data.wind?.speed || 0) * 3.6;
+      const weatherSeverity = Math.min(
+        1,
+        (rain1h / 20) +
+        (windKmh / 90) +
+        (data.weather?.[0]?.main === 'Thunderstorm' ? 0.25 : 0)
+      );
+
+      return {
+        source: 'OpenWeatherMap',
+        temperature_c: Number(data.main?.temp || 0),
+        precipitation_mm: rain1h,
+        rain_probability_pct: rain1h > 0 ? Math.min(100, Math.round(rain1h * 8)) : 0,
+        wind_speed_kmh: Number(windKmh.toFixed(1)),
+        weather_code: data.weather?.[0]?.id || null,
+        severity_score: Number(weatherSeverity.toFixed(2)),
+      };
+    } catch (error) {
+      // Fall through to Open-Meteo fallback if OpenWeather fails.
+    }
+  }
+
   try {
     const response = await axios.get('https://api.open-meteo.com/v1/forecast', {
       params: {
@@ -180,15 +261,11 @@ function calculateAutomatedPaycheck({
 }
 
 async function evaluateDeliveryPaycheck(payload = {}) {
-  const latitude = Number(payload.latitude);
-  const longitude = Number(payload.longitude);
+  const latitude = Number.isFinite(Number(payload.latitude)) ? Number(payload.latitude) : CHENNAI_COORDS.latitude;
+  const longitude = Number.isFinite(Number(payload.longitude)) ? Number(payload.longitude) : CHENNAI_COORDS.longitude;
   const reason = payload.reason || 'other';
   const reasonType = inferReason(reason);
   const baseDailyPay = Number(payload.base_daily_pay || payload.base_pay || 800);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    throw new Error('Valid latitude and longitude are required');
-  }
 
   if (!Number.isFinite(baseDailyPay) || baseDailyPay <= 0) {
     throw new Error('Valid base_daily_pay is required');
@@ -234,4 +311,5 @@ async function evaluateDeliveryPaycheck(payload = {}) {
 module.exports = {
   evaluateDeliveryPaycheck,
   inferReason,
+  CHENNAI_COORDS,
 };

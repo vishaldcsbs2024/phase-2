@@ -298,18 +298,20 @@ router.post('/auto-file-disruption-claim', verifyToken, async (req, res, next) =
 router.post('/auto-paycheck', async (req, res, next) => {
   try {
     const { latitude, longitude, reason, base_daily_pay } = req.body;
+    const fallbackLatitude = 13.0827;
+    const fallbackLongitude = 80.2707;
 
-    if (latitude === undefined || longitude === undefined || !reason || !base_daily_pay) {
+    if (!reason || !base_daily_pay) {
       return res.status(400).json({
         success: false,
         data: null,
-        error: 'latitude, longitude, reason and base_daily_pay are required'
+        error: 'reason and base_daily_pay are required'
       });
     }
 
     const result = await evaluateDeliveryPaycheck({
-      latitude,
-      longitude,
+      latitude: latitude ?? fallbackLatitude,
+      longitude: longitude ?? fallbackLongitude,
       reason,
       base_daily_pay,
     });
@@ -319,8 +321,8 @@ router.post('/auto-paycheck', async (req, res, next) => {
       data: {
         ...result,
         explanation: {
-          location_verification: 'Coordinates are verified with reverse geocoding and satellite imagery evidence.',
-          weather_intelligence: 'Live weather is fetched from Open-Meteo to measure disruption severity.',
+          location_verification: 'Coordinates are verified with reverse geocoding and satellite imagery evidence. Defaults to Chennai if coordinates are not sent.',
+          weather_intelligence: 'Live weather is fetched from WeatherAPI.com (using WEATHER_API_KEY) with OpenWeatherMap/Open-Meteo fallback.',
           traffic_intelligence: 'Traffic risk is computed with city + peak-hour + reason-aware heuristic scoring.',
           paycheck_decision: 'Automated paycheck amount is derived from reason type, weather, traffic, and confidence signals.'
         }

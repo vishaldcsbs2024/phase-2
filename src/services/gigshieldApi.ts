@@ -27,7 +27,6 @@ function buildHeaders(extraHeaders: Record<string, string> = {}) {
   return {
     "Content-Type": "application/json",
     ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
-    ...(user?.id ? { "x-user-id": user.id } : {}),
     ...extraHeaders,
   };
 }
@@ -48,34 +47,53 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function registerUser(data: RegisterData): Promise<User> {
-  try {
-    const response = await request<{ partner: { id: string; phone_number: string; full_name: string }; token: string }>(
-      "/api/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          phoneNumber: data.phone,
-          fullName: data.name,
-          password: `GigShield@${data.phone}`,
-        }),
-      },
-    );
+  const response = await request<{ partner: { id: string; phone_number: string; full_name: string }; token: string }>(
+    "/api/auth/register",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        phoneNumber: data.phone,
+        fullName: data.name,
+        password: `GigShield@${data.phone}`,
+        city: data.city,
+        workType: data.workType,
+        weeklyIncome: data.weeklyIncome,
+      }),
+    },
+  );
 
-    return {
-      id: response.partner.id,
-      name: data.name,
-      phone: data.phone,
-      workType: data.workType,
-      weeklyIncome: data.weeklyIncome,
-      city: data.city,
-      token: response.token,
-    };
-  } catch {
-    return {
-      id: crypto.randomUUID(),
-      ...data,
-    };
-  }
+  return {
+    id: response.partner.id,
+    name: data.name,
+    phone: data.phone,
+    workType: data.workType,
+    weeklyIncome: data.weeklyIncome,
+    city: data.city,
+    token: response.token,
+  };
+}
+
+export async function loginUser(data: { phone: string; password?: string }): Promise<User> {
+  const response = await request<{ partner: { id: string; phone_number: string; full_name: string; city?: string; work_type?: string }; token: string }>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        phoneNumber: data.phone,
+        password: data.password ?? `GigShield@${data.phone}`,
+      }),
+    },
+  );
+
+  return {
+    id: response.partner.id,
+    name: response.partner.full_name,
+    phone: response.partner.phone_number,
+    workType: response.partner.work_type ?? "Delivery",
+    weeklyIncome: 0,
+    city: response.partner.city ?? "Chennai",
+    token: response.token,
+  };
 }
 
 export async function evaluateRisk(payload: Record<string, unknown>): Promise<GigShieldRiskEvaluation> {
@@ -104,9 +122,8 @@ export async function getActiveDisruptions(): Promise<GigShieldDisruption[]> {
   return data.disruptions;
 }
 
-export async function getClaims(userId?: string): Promise<GigShieldClaimRecord[]> {
-  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
-  const data = await request<{ claims: GigShieldClaimRecord[] }>(`/api/claims/history${query}`);
+export async function getClaims(): Promise<GigShieldClaimRecord[]> {
+  const data = await request<{ claims: GigShieldClaimRecord[] }>("/api/claims/history");
   return data.claims;
 }
 
@@ -121,19 +138,17 @@ export async function processClaim(claimId: string, payload: Record<string, unkn
   });
 }
 
-export async function getPayouts(userId?: string): Promise<GigShieldPayout[]> {
-  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
-  const data = await request<{ payouts: GigShieldPayout[] }>(`/api/payouts/my-payouts${query}`);
+export async function getPayouts(): Promise<GigShieldPayout[]> {
+  const data = await request<{ payouts: GigShieldPayout[] }>(`/api/payouts/my-payouts`);
   return data.payouts;
 }
 
-export async function getPayoutStats(userId?: string): Promise<{
+export async function getPayoutStats(): Promise<{
   total_amount: number;
   by_status: { pending: number; processing: number; completed: number };
   recent_payouts: GigShieldPayout[];
 }> {
-  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
-  return request(`/api/payouts/stats${query}`);
+  return request(`/api/payouts/stats`);
 }
 
 export async function getNotifications(): Promise<GigShieldNotification[]> {
@@ -150,6 +165,12 @@ export async function triggerPaymentSuccess(payload: { payoutId: string; gateway
 
 export async function clearNotifications(): Promise<void> {
   await request("/api/notifications/clear", {
+    method: "POST",
+  });
+}
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  await request(`/api/notifications/${notificationId}/read`, {
     method: "POST",
   });
 }

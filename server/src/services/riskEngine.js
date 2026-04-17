@@ -36,20 +36,28 @@ const evaluateRisk = async ({
   weather,
   locationRisk,
   trafficCondition,
+  disruptionSeverity,
+  location,
+  historicalData,
   pastClaims,
   incomePattern,
 } = {}) => {
   const weatherScore = normalizeScore(weather?.score ?? weather?.severity ?? weather?.risk ?? weather, 50);
-  const locationScore = normalizeScore(locationRisk?.score ?? locationRisk, 50);
+  const locationFallback = String(location || '').toLowerCase().includes('chennai') ? 68 : 50;
+  const locationScore = normalizeScore(locationRisk?.score ?? locationRisk ?? locationFallback, 50);
   const trafficScore = normalizeScore(trafficCondition?.score ?? trafficCondition?.risk ?? trafficCondition, 50);
+  const disruptionScore = normalizeScore(disruptionSeverity ?? weather?.severity ?? 50, 50);
   const historyScore = calculateHistoryScore(pastClaims);
+  const historicalTrendScore = normalizeScore(historicalData?.trendScore ?? historicalData?.score ?? 50, 50);
   const incomeScore = calculateIncomeScore(incomePattern);
 
   const weightedScore = (
-    (weatherScore * 0.3) +
-    (locationScore * 0.2) +
-    (trafficScore * 0.2) +
-    (historyScore * 0.3)
+    (weatherScore * 0.22) +
+    (locationScore * 0.18) +
+    (trafficScore * 0.16) +
+    (disruptionScore * 0.16) +
+    (historyScore * 0.18) +
+    (historicalTrendScore * 0.10)
   );
 
   const adjustedScore = clamp(weightedScore + ((incomeScore - 50) * 0.08), 0, 100);
@@ -67,7 +75,9 @@ const evaluateRisk = async ({
       weatherScore,
       locationScore,
       trafficScore,
+      disruptionScore,
       historyScore,
+      historicalTrendScore,
       incomeScore,
     },
   };

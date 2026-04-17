@@ -104,6 +104,7 @@ export interface GigShieldNotification {
   claimId?: string | null;
   payoutId?: string | null;
   disruptionId?: string | null;
+  read?: boolean;
   timestamp: string;
 }
 

@@ -5,6 +5,8 @@ const { analyzeFraud } = require('./fraudDetectionService');
 const { processPayout } = require('./paymentService');
 const { getPayoutByClaimId } = require('./paymentService');
 const { pushNotification } = require('./notificationService');
+const { getAdminRules } = require('./adminRuleService');
+const { emitRealtimeEvent } = require('../realtime/socketBus');
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -85,6 +87,34 @@ const storeFraudLog = async ({ claimId, userId, partnerId, fraud, risk, metadata
   );
 };
 
+const storeFraudCheck = async ({ claimId, userId, partnerId, fraud }) => {
+  const checkId = uuidv4();
+  await query(
+    `INSERT INTO fraud_checks (
+      id,
+      claim_id,
+      user_id,
+      partner_id,
+      fraud_probability,
+      fraud_score,
+      decision,
+      features_json,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    [
+      checkId,
+      claimId,
+      userId,
+      partnerId,
+      Number(fraud.fraudProbability ?? fraud.fraudScore),
+      Number(fraud.fraudScore),
+      fraud.decision,
+      JSON.stringify(fraud.features || {}),
+    ],
+  );
+};
+
 const createClaimFromDisruption = async ({
   userId,
   partnerId,
@@ -117,14 +147,34 @@ const createClaimFromDisruption = async ({
 
   const resolvedUserId = userId || policy?.user_id || partnerId || null;
   const resolvedPartnerId = partnerId || policy?.partner_id || resolvedUserId;
-  const risk = await evaluateRisk({ weather, locationRisk, trafficCondition: traffic, pastClaims, incomePattern });
-  const fraud = await analyzeFraud({ currentGps, historicalLocations, claimWeather: weather, weatherApiData: weather, currentIncome, last7DayAverageIncome, disruptionDetected });
+  const rules = await getAdminRules();
+  const risk = await evaluateRisk({
+    weather,
+    locationRisk,
+    trafficCondition: traffic,
+    disruptionSeverity: weather?.severity,
+    location,
+    historicalData: { trendScore: pastClaims?.severity || 50 },
+    pastClaims,
+    incomePattern,
+  });
+  const fraud = await analyzeFraud({
+    userId: resolvedUserId,
+    location,
+    locationRisk: locationRisk?.score,
+    timestamp: new Date().toISOString(),
+  });
 
-  const decision = 'APPROVE';
+  let decision = 'APPROVE';
+  if (fraud.fraudScore >= rules.fraud_threshold) {
+    decision = 'REJECT';
+  } else if (risk.riskScore < rules.risk_threshold) {
+    decision = 'MANUAL_REVIEW';
+  }
 
   const confidenceScore = clamp(Math.round((risk.confidenceScore * 0.6) + ((100 - fraud.fraudScore) * 0.4)), 0, 100);
   const reasoning = buildReasoning({ risk, fraud, decision });
-  const payoutAmount = clamp(Math.round((risk.riskScore * 3) + 120), 150, 500);
+  const payoutAmount = clamp(Math.round((risk.riskScore * 3) + 120), 150, Number(rules.payout_limit));
 
   const claimId = uuidv4();
   const createdClaim = await query(
@@ -162,8 +212,8 @@ const createClaimFromDisruption = async ({
       disruptionType || 'auto-disruption',
       `${disruptionType || 'disruption'} detected at ${location || city || 'GigShield zone'}`,
       payoutAmount || amount || 0,
-      'approved',
-      1,
+      decision === 'REJECT' ? 'rejected' : decision === 'MANUAL_REVIEW' ? 'manual_review' : 'approved',
+      decision === 'REJECT' ? 0 : 1,
       disruptionType || 'auto-disruption',
       location || city || 'Mumbai',
       payoutAmount || amount || 0,
@@ -190,22 +240,31 @@ const createClaimFromDisruption = async ({
       confidenceScore,
     },
   });
+  await storeFraudCheck({ claimId, userId: resolvedUserId, partnerId: resolvedPartnerId, fraud });
 
   let payout = null;
-  payout = await processPayout({
-    claimId,
-    partnerId: resolvedPartnerId,
-    userId: resolvedUserId,
-    amount: payoutAmount,
-  });
+  if (decision === 'APPROVE') {
+    payout = await processPayout({
+      claimId,
+      partnerId: resolvedPartnerId,
+      userId: resolvedUserId,
+      amount: payoutAmount,
+    });
+  }
 
-  pushNotification({
-    type: 'success',
-    title: 'Claim approved',
-    message: `₹${payoutAmount} credited via GigShield ⚡`,
+  await pushNotification({
+    type: decision === 'REJECT' ? 'warning' : 'success',
+    title: decision === 'REJECT' ? 'Claim rejected' : decision === 'MANUAL_REVIEW' ? 'Claim requires review' : 'Claim approved',
+    message: decision === 'APPROVE'
+      ? `₹${payoutAmount} credited via GigShield ⚡`
+      : decision === 'REJECT'
+        ? 'Fraud threshold exceeded. Claim rejected by rules engine.'
+        : 'Risk threshold not met. Claim moved to manual review queue.',
     amount: payoutAmount,
     claimId,
-    payoutId: payout.id,
+    payoutId: payout?.id || null,
+    userId: resolvedUserId,
+    partnerId: resolvedPartnerId,
   });
 
   const updatedClaim = await query(
@@ -213,7 +272,7 @@ const createClaimFromDisruption = async ({
      SET status = ?, decision = ?, confidence_score = ?, risk_score = ?, fraud_score = ?, daily_payout = ?, claimed_amount = ?, reasoning_json = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ? RETURNING *`,
     [
-      'approved',
+      decision === 'REJECT' ? 'rejected' : decision === 'MANUAL_REVIEW' ? 'manual_review' : 'approved',
       decision,
       confidenceScore,
       risk.riskScore,
@@ -224,6 +283,13 @@ const createClaimFromDisruption = async ({
       claimId,
     ],
   );
+
+  emitRealtimeEvent('claim:status', {
+    claimId,
+    status: updatedClaim.rows[0].status,
+    decision,
+    confidenceScore,
+  });
 
   return {
     claimStatus: updatedClaim.rows[0].status,
@@ -273,10 +339,14 @@ const processExistingClaim = async (claimId, {
     ['processing', claimId],
   );
 
+  const rules = await getAdminRules();
   const risk = await evaluateRisk({
     weather: weather || { score: Number(claim.risk_score || 55) },
     locationRisk: locationRisk || { score: 56 },
     trafficCondition: traffic || { score: 58 },
+    disruptionSeverity: weather?.severity || claim.risk_score,
+    location: claim.location,
+    historicalData: { trendScore: claim.risk_score || 50 },
     pastClaims: pastClaims || { count: 1, recentFlags: 0, severity: 0 },
     incomePattern: incomePattern || {
       currentIncome: Number(currentIncome || claim.claimed_amount || 5000),
@@ -285,25 +355,26 @@ const processExistingClaim = async (claimId, {
   });
 
   const fraud = await analyzeFraud({
-    currentGps: currentGps || { latitude: 19.076, longitude: 72.8777, timestamp: new Date().toISOString() },
-    historicalLocations: historicalLocations || [
-      { latitude: 19.076, longitude: 72.8777, timestamp: new Date(Date.now() - 10 * 60_000).toISOString() },
-    ],
-    claimWeather: weather || { type: 'storm', severity: Number(claim.risk_score || 60) },
-    weatherApiData: weather || { type: 'storm', severity: Number(claim.risk_score || 60) },
-    currentIncome: Number(currentIncome || claim.claimed_amount || 5000),
-    last7DayAverageIncome: Number(last7DayAverageIncome || (claim.claimed_amount ? claim.claimed_amount * 1.08 : 5400)),
-    disruptionDetected,
+    userId: claim.user_id || claim.partner_id,
+    claimId,
+    location: claim.location,
+    locationRisk: locationRisk?.score,
+    timestamp: new Date().toISOString(),
   });
 
-  const decision = 'APPROVE';
+  let decision = 'APPROVE';
+  if (fraud.fraudScore >= rules.fraud_threshold) {
+    decision = 'REJECT';
+  } else if (risk.riskScore < rules.risk_threshold) {
+    decision = 'MANUAL_REVIEW';
+  }
 
   const confidenceScore = clamp(Math.round((risk.confidenceScore * 0.6) + ((100 - fraud.fraudScore) * 0.4)), 0, 100);
   const reasoning = buildReasoning({ risk, fraud, decision });
-  const payoutAmount = clamp(Math.round((risk.riskScore * 3) + 120), 150, 500);
+  const payoutAmount = clamp(Math.round((risk.riskScore * 3) + 120), 150, Number(rules.payout_limit));
 
   let payout = await getPayoutByClaimId(claimId);
-  if (!payout || payout.status !== 'completed') {
+  if (decision === 'APPROVE' && (!payout || payout.status !== 'completed')) {
     payout = await processPayout({
       claimId,
       partnerId: claim.partner_id || null,
@@ -317,7 +388,7 @@ const processExistingClaim = async (claimId, {
      SET status = ?, decision = ?, confidence_score = ?, risk_score = ?, fraud_score = ?, daily_payout = ?, claimed_amount = ?, reasoning_json = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ? RETURNING *`,
     [
-      'approved',
+      decision === 'REJECT' ? 'rejected' : decision === 'MANUAL_REVIEW' ? 'manual_review' : 'approved',
       decision,
       confidenceScore,
       risk.riskScore,
@@ -343,14 +414,33 @@ const processExistingClaim = async (claimId, {
       confidenceScore,
     },
   });
+  await storeFraudCheck({
+    claimId,
+    userId: updatedClaim.rows[0].user_id || updatedClaim.rows[0].partner_id || null,
+    partnerId: updatedClaim.rows[0].partner_id || null,
+    fraud,
+  });
 
-  pushNotification({
-    type: 'success',
-    title: 'Claim processed and approved',
-    message: `₹${payoutAmount} credited via GigShield ⚡`,
+  await pushNotification({
+    type: decision === 'REJECT' ? 'warning' : 'success',
+    title: decision === 'REJECT' ? 'Claim rejected' : decision === 'MANUAL_REVIEW' ? 'Claim moved to review' : 'Claim processed and approved',
+    message: decision === 'APPROVE'
+      ? `₹${payoutAmount} credited via GigShield ⚡`
+      : decision === 'REJECT'
+        ? 'Claim rejected based on fraud threshold.'
+        : 'Claim requires manual review based on risk threshold.',
     amount: payoutAmount,
     claimId,
     payoutId: payout?.id || null,
+    userId: updatedClaim.rows[0].user_id || updatedClaim.rows[0].partner_id || null,
+    partnerId: updatedClaim.rows[0].partner_id || null,
+  });
+
+  emitRealtimeEvent('claim:status', {
+    claimId,
+    status: updatedClaim.rows[0].status,
+    decision,
+    confidenceScore,
   });
 
   return {

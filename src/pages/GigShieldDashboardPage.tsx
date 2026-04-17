@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { io } from "socket.io-client";
 import { useAuth } from "@/context/AuthContext";
+import SaaSSidebar from "@/components/layout/SaaSSidebar";
 import type {
   GigShieldClaimRecord,
   GigShieldDisruption,
@@ -19,6 +21,7 @@ import {
   getActiveDisruptions,
   getClaims,
   getNotifications,
+  markNotificationRead,
   getPayoutStats,
   getPayouts,
   processClaim,
@@ -65,7 +68,7 @@ import {
 } from "lucide-react";
 
 type ViewMode = "worker" | "admin";
-type Scenario = "rainstorm" | "fraud";
+type Scenario = "rainstorm" | "traffic" | "outage" | "fraud";
 type IssueType = "rainstorm" | "traffic" | "outage" | "fraud";
 
 const issueOptions: Array<{ key: IssueType; label: string; description: string }> = [
@@ -101,6 +104,28 @@ const statusTone = (status: string) => {
   if (status === "rejected") return "bg-rose-500/15 text-rose-700 border-rose-200";
   if (status === "manual_review" || status === "processing") return "bg-amber-500/15 text-amber-700 border-amber-200";
   return "bg-slate-500/15 text-slate-700 border-slate-200";
+};
+
+const heatmapTone = (intensity: number) => {
+  if (intensity >= 0.85) return "bg-emerald-500/80";
+  if (intensity >= 0.7) return "bg-emerald-500/65";
+  if (intensity >= 0.55) return "bg-emerald-500/50";
+  if (intensity >= 0.4) return "bg-emerald-500/35";
+  return "bg-emerald-500/20";
+};
+
+const progressWidthClass = (value: number) => {
+  if (value >= 100) return "w-full";
+  if (value >= 90) return "w-[90%]";
+  if (value >= 80) return "w-[80%]";
+  if (value >= 70) return "w-[70%]";
+  if (value >= 60) return "w-[60%]";
+  if (value >= 50) return "w-[50%]";
+  if (value >= 40) return "w-[40%]";
+  if (value >= 30) return "w-[30%]";
+  if (value >= 20) return "w-[20%]";
+  if (value >= 10) return "w-[10%]";
+  return "w-[5%]";
 };
 
 export default function GigShieldDashboardPage() {
@@ -301,21 +326,21 @@ export default function GigShieldDashboardPage() {
 
   const claimsQuery = useQuery({
     queryKey: ["gigshield-claims", user?.id],
-    queryFn: () => getClaims(user?.id),
+    queryFn: () => getClaims(),
     enabled: Boolean(user?.id),
     refetchInterval: 7000,
   });
 
   const payoutsQuery = useQuery({
     queryKey: ["gigshield-payouts", user?.id],
-    queryFn: () => getPayouts(user?.id),
+    queryFn: () => getPayouts(),
     enabled: Boolean(user?.id),
     refetchInterval: 7000,
   });
 
   const payoutStatsQuery = useQuery({
     queryKey: ["gigshield-payout-stats", user?.id],
-    queryFn: () => getPayoutStats(user?.id),
+    queryFn: () => getPayoutStats(),
     enabled: Boolean(user?.id),
     refetchInterval: 7000,
   });
@@ -430,6 +455,33 @@ export default function GigShieldDashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const socket = io("http://localhost:3001", {
+      transports: ["websocket"],
+    });
+
+    const refreshRealtime = () => {
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-claims", user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-payouts", user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-payout-stats", user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-disruptions"] });
+      void queryClient.invalidateQueries({ queryKey: ["gigshield-notifications"] });
+    };
+
+    socket.on("disruption:new", refreshRealtime);
+    socket.on("claim:status", refreshRealtime);
+    socket.on("payout:processed", refreshRealtime);
+    socket.on("notification:new", refreshRealtime);
+
+    return () => {
+      socket.off("disruption:new", refreshRealtime);
+      socket.off("claim:status", refreshRealtime);
+      socket.off("payout:processed", refreshRealtime);
+      socket.off("notification:new", refreshRealtime);
+      socket.disconnect();
+    };
+  }, [queryClient, user?.id]);
+
   const payoutTotal = payoutStatsQuery.data?.total_amount ?? 0;
   const activeDisruptions = disruptionsQuery.data ?? [];
   const notifications = notificationsQuery.data ?? [];
@@ -515,7 +567,7 @@ export default function GigShieldDashboardPage() {
         });
       } else if (result.decision === "APPROVE") {
         toast.success(`₹${result.payout?.payout_amount ?? 0} credited via GigShield ⚡`, {
-          description: "Rainstorm disruption was auto-approved and paid out.",
+          description: `${issueOptions.find((issue) => issue.key === issueType)?.label ?? "Selected"} disruption was auto-approved and paid out.`,
         });
       } else {
         toast.message("Claim routed for manual review", {
@@ -569,6 +621,13 @@ export default function GigShieldDashboardPage() {
     },
   });
 
+  const markReadMutation = useMutation({
+    mutationFn: (notificationId: string) => markNotificationRead(notificationId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["gigshield-notifications"] });
+    },
+  });
+
   const topNotification = notifications[0];
   const latestClaim = claims[0];
   const safeParseReasoning = (json: string | null): string[] => {
@@ -600,15 +659,20 @@ export default function GigShieldDashboardPage() {
     : null);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_42%),linear-gradient(180deg,_#07111f_0%,_#0f172a_45%,_#0e2233_100%)] text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-5 sm:px-6 lg:px-8">
-        <div className="mb-6 flex items-center justify-between gap-3 rounded-[28px] border border-white/15 bg-slate-950/80 px-5 py-4 text-white shadow-[0_20px_60px_-30px_rgba(0,0,0,0.65)] backdrop-blur">
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_42%),linear-gradient(180deg,_#07111f_0%,_#0f172a_45%,_#0e2233_100%)] dark:text-white transition-colors">
+      <div className="mx-auto flex max-w-[1440px] gap-6 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+        <SaaSSidebar />
+        <div className="min-w-0 flex-1">
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-[28px] border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-950/80 px-5 py-4 text-slate-900 dark:text-white shadow-[0_20px_60px_-30px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_-30px_rgba(0,0,0,0.65)] backdrop-blur">
           <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-emerald-300/80">GigShield</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">AI-powered parametric insurance control room</h1>
-            <p className="mt-1 text-sm text-slate-300">Worker protection, automated claims, fraud screening, and payout orchestration in one place.</p>
+            <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300/80">GigShield</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">AI-powered parametric insurance control room</h1>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Worker protection, automated claims, fraud screening, and payout orchestration in one place.</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" className="border border-white/10 text-white hover:bg-white/10" onClick={() => void refreshLiveFeed()}>
+              <BellRing className="mr-2 h-4 w-4" /> Notifications
+            </Button>
             <Button variant="ghost" className="border border-white/10 text-white hover:bg-white/10" onClick={() => navigate("/claims")}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Claims
             </Button>
@@ -704,26 +768,28 @@ export default function GigShieldDashboardPage() {
                   
                   {/* Primary button for selected issue type */}
                   <Button
-                    className="h-12 w-full justify-start rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"
-                    onClick={() => simulateMutation.mutate(issueType === "fraud" ? "fraud" : "rainstorm")}
+                    className="h-12 w-full justify-start rounded-2xl bg-emerald-600 font-semibold text-white hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all"
+                    onClick={() => simulateMutation.mutate(issueType)}
                     disabled={simulateMutation.isPending}
                   >
+                    {simulateMutation.isPending && <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
                     {issueType === "rainstorm" && <CloudRain className="mr-2 h-4 w-4" />}
                     {issueType === "traffic" && <TriangleAlert className="mr-2 h-4 w-4" />}
                     {issueType === "outage" && <Waves className="mr-2 h-4 w-4" />}
                     {issueType === "fraud" && <ShieldAlert className="mr-2 h-4 w-4" />}
-                    Simulate {issueOptions.find((opt) => opt.key === issueType)?.label}
+                    {simulateMutation.isPending ? "Simulating..." : `Simulate ${issueOptions.find((opt) => opt.key === issueType)?.label}`}
                   </Button>
 
                   {/* Show alternate high-impact scenarios */}
                   {issueType !== "fraud" && (
                     <Button
                       variant="outline"
-                      className="h-12 w-full justify-start rounded-2xl border-rose-200 text-rose-700 hover:bg-rose-50"
+                      className="h-12 w-full justify-start rounded-2xl border-2 border-rose-300 bg-rose-50 font-semibold text-rose-700 hover:bg-rose-100 transition-all"
                       onClick={() => simulateMutation.mutate("fraud")}
                       disabled={simulateMutation.isPending}
                     >
-                      <ShieldAlert className="mr-2 h-4 w-4" /> Simulate Fraud Attempt
+                      {simulateMutation.isPending && <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-rose-600 border-t-transparent" />}
+                      <ShieldAlert className="mr-2 h-4 w-4" /> {simulateMutation.isPending ? "Simulating..." : "Simulate Fraud Attempt"}
                     </Button>
                   )}
 
@@ -777,22 +843,28 @@ export default function GigShieldDashboardPage() {
                   <EmptyState text="Run Simulate Rainstorm to generate a live claim and see the processing pipeline here." />
                 )}
 
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    {issueOptions.map((issue) => (
-                      <Button
-                        key={issue.key}
-                        size="sm"
-                        variant={issueType === issue.key ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setIssueType(issue.key)}
-                      >
-                        {issue.label}
-                      </Button>
-                    ))}
+                <div className="mt-6 space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Select Issue Type</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {issueOptions.map((issue) => (
+                        <Button
+                          key={issue.key}
+                          variant={issueType === issue.key ? "default" : "outline"}
+                          className={`h-11 rounded-xl font-semibold transition-all ${
+                            issueType === issue.key 
+                              ? "bg-emerald-600 text-white shadow-lg" 
+                              : "border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                          }`}
+                          onClick={() => setIssueType(issue.key)}
+                        >
+                          {issue.label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <Button
-                    className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"
+                    className="h-12 w-full rounded-2xl bg-slate-950 text-white font-semibold hover:bg-slate-800"
                     disabled={processClaimMutation.isPending}
                     onClick={() => {
                       if (!latestClaim?.id) {
@@ -843,7 +915,19 @@ export default function GigShieldDashboardPage() {
                         <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-semibold text-slate-950">{item.title}</p>
-                            <Badge className={statusTone(item.type)}>{item.type}</Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge className={statusTone(item.type)}>{item.type}</Badge>
+                              {!item.read ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 rounded-full border border-slate-200 px-3 text-xs"
+                                  onClick={() => markReadMutation.mutate(item.id)}
+                                >
+                                  Mark read
+                                </Button>
+                              ) : null}
+                            </div>
                           </div>
                           <p className="mt-1 text-sm text-slate-700">{item.message}</p>
                         </div>
@@ -928,8 +1012,7 @@ export default function GigShieldDashboardPage() {
                         return (
                           <div
                             key={index}
-                            className="aspect-square rounded-xl border border-white/20"
-                            style={{ background: `rgba(16, 185, 129, ${0.12 + intensity * 0.45})` }}
+                            className={`aspect-square rounded-xl border border-white/20 ${heatmapTone(intensity)}`}
                           />
                         );
                       })}
@@ -1009,11 +1092,21 @@ export default function GigShieldDashboardPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-11 w-full rounded-2xl border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                  className="h-12 w-full rounded-2xl border-2 border-emerald-400 bg-emerald-50 font-semibold text-emerald-700 hover:bg-emerald-100 active:scale-95 transition-all"
                   onClick={() => void refreshLiveFeed()}
                   disabled={isRefreshingLiveFeed}
                 >
-                  {isRefreshingLiveFeed ? "Refreshing live feed..." : "Refresh live feed"}
+                  {isRefreshingLiveFeed ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+                      Refreshing live feed...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Refresh live feed
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1049,8 +1142,8 @@ export default function GigShieldDashboardPage() {
                     <Badge variant="outline" className="text-slate-500">{Math.round((verificationStep === 1 ? 25 : 0))}%</Badge>
                   )}
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-                  <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold">Select Issue Type</p>
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
+                  <p className="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 font-semibold">Select Issue Type</p>
                   <div className="flex flex-wrap gap-2">
                     {issueOptions.map((issue) => (
                       <Button
@@ -1059,7 +1152,7 @@ export default function GigShieldDashboardPage() {
                         className={`rounded-full transition-all ${
                           issueType === issue.key
                             ? "bg-emerald-500 text-white hover:bg-emerald-600"
-                            : "border border-slate-200 bg-white text-slate-900 hover:border-slate-300"
+                            : "border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500"
                         }`}
                         onClick={() => setIssueType(issue.key)}
                       >
@@ -1067,7 +1160,7 @@ export default function GigShieldDashboardPage() {
                       </Button>
                     ))}
                   </div>
-                  <p className="text-sm text-slate-600">{issueOptions.find((issue) => issue.key === issueType)?.description}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">{issueOptions.find((issue) => issue.key === issueType)?.description}</p>
                   <textarea
                     value={processReason}
                     onChange={(event) => setProcessReason(event.target.value)}
@@ -1219,7 +1312,7 @@ export default function GigShieldDashboardPage() {
                         {gpsVerified && <Badge className="bg-emerald-100 text-emerald-700 border-0">Verified</Badge>}
                       </div>
                       <div className="h-2 w-full rounded-full bg-slate-200">
-                        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${gpsProgress}%` }} />
+                        <div className={`h-full rounded-full bg-emerald-500 transition-all ${progressWidthClass(gpsProgress)}`} />
                       </div>
                       {gpsCoords && (
                         <p className="text-xs text-slate-600">
@@ -1361,6 +1454,7 @@ export default function GigShieldDashboardPage() {
             </div>
           </DrawerContent>
         </Drawer>
+        </div>
       </div>
     </div>
   );

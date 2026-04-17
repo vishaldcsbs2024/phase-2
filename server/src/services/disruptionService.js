@@ -119,7 +119,7 @@ const simulateDisruption = async ({
       [claimResult.claim.id, disruptionId],
     );
 
-    pushNotification({
+    await pushNotification({
       type: claimResult.decision === 'REJECT' ? 'warning' : 'success',
       title: claimResult.decision === 'REJECT' ? 'Fraud attempt blocked' : 'Disruption processed',
       message: claimResult.decision === 'REJECT'
@@ -128,6 +128,8 @@ const simulateDisruption = async ({
       claimId: claimResult.claim.id,
       disruptionId,
       amount: claimResult.payout ? claimResult.payout.payout_amount : 0,
+      userId: claimResult.claim?.user_id || null,
+      partnerId: claimResult.claim?.partner_id || null,
     });
   }
 

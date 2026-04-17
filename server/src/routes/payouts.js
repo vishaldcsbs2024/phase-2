@@ -1,19 +1,12 @@
 const express = require('express');
 const { getPayoutsByUser } = require('../services/paymentService');
+const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/my-payouts', async (req, res, next) => {
+router.get('/my-payouts', verifyToken, async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'];
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: 'userId is required',
-      });
-    }
+    const userId = req.user.id;
 
     const payouts = await getPayoutsByUser(String(userId));
 
@@ -27,17 +20,9 @@ router.get('/my-payouts', async (req, res, next) => {
   }
 });
 
-router.get('/stats', async (req, res, next) => {
+router.get('/stats', verifyToken, async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'];
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: 'userId is required',
-      });
-    }
+    const userId = req.user.id;
 
     const payouts = await getPayoutsByUser(String(userId));
     const totalAmount = payouts.reduce((sum, payout) => sum + Number(payout.payout_amount || payout.amount || 0), 0);
@@ -60,17 +45,9 @@ router.get('/stats', async (req, res, next) => {
   }
 });
 
-router.get('/total', async (req, res, next) => {
+router.get('/total', verifyToken, async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'];
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: 'userId is required',
-      });
-    }
+    const userId = req.user.id;
 
     const payouts = await getPayoutsByUser(String(userId));
     const total = payouts.reduce((sum, payout) => sum + Number(payout.payout_amount || payout.amount || 0), 0);

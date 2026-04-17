@@ -1,5 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { query } = require('../config/database');
+const { emitRealtimeEvent } = require('../realtime/socketBus');
+const { pushNotification } = require('./notificationService');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -45,7 +47,26 @@ const processPayout = async ({ claimId, partnerId = null, userId = null, amount 
     ['completed', gatewayReference, payout.id],
   );
 
-  return completed.rows[0];
+  const completedPayout = completed.rows[0];
+  emitRealtimeEvent('payout:processed', {
+    payoutId: completedPayout.id,
+    claimId,
+    amount: completedPayout.payout_amount || completedPayout.amount,
+    status: completedPayout.status,
+  });
+
+  await pushNotification({
+    type: 'success',
+    title: 'Payout completed',
+    message: `Payout of Rs ${Math.round(Number(completedPayout.payout_amount || completedPayout.amount || amount))} processed successfully.`,
+    amount: Number(completedPayout.payout_amount || completedPayout.amount || amount),
+    claimId,
+    payoutId: completedPayout.id,
+    userId,
+    partnerId,
+  });
+
+  return completedPayout;
 };
 
 const finalizeWebhookPayment = async ({ payoutId, gatewayReference }) => {
@@ -56,7 +77,17 @@ const finalizeWebhookPayment = async ({ payoutId, gatewayReference }) => {
     ['completed', gatewayReference || null, payoutId],
   );
 
-  return result.rows[0];
+  const payout = result.rows[0];
+  if (payout) {
+    emitRealtimeEvent('payout:processed', {
+      payoutId: payout.id,
+      claimId: payout.claim_id,
+      amount: payout.payout_amount || payout.amount,
+      status: payout.status,
+    });
+  }
+
+  return payout;
 };
 
 const getPayoutsByUser = async (userId) => {

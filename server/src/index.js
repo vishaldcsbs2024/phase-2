@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -6,7 +8,10 @@ require('dotenv').config();
 
 const { testConnection, initializeDatabase } = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
+const { setSocketServer } = require('./realtime/socketBus');
+const { startWeatherMonitoring } = require('./services/weatherAutomationService');
 
+const authRouter = require('./routes/auth');
 const partnersRouter = require('./routes/partners');
 const premiumRouter = require('./routes/premium');
 const claimsRouter = require('./routes/claims');
@@ -18,8 +23,24 @@ const fraudRouter = require('./routes/fraud');
 const disruptionRouter = require('./routes/disruption');
 const notificationsRouter = require('./routes/notifications');
 const webhookRouter = require('./routes/webhook');
+const adminRulesRouter = require('./routes/adminRules');
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+setSocketServer(io);
+
+io.on('connection', (socket) => {
+  console.log(`[socket] client connected ${socket.id}`);
+  socket.on('disconnect', () => {
+    console.log(`[socket] client disconnected ${socket.id}`);
+  });
+});
 
 // Middleware
 app.use(helmet());
@@ -50,6 +71,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Routes
+app.use('/api/auth', authRouter);
 app.use('/api/partners', partnersRouter);
 app.use('/api/premium', premiumRouter);
 app.use('/api/claims', claimsRouter);
@@ -61,6 +83,7 @@ app.use('/api/fraud', fraudRouter);
 app.use('/api/disruption', disruptionRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/webhook', webhookRouter);
+app.use('/api/admin/rules', adminRulesRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -88,25 +111,28 @@ const startServer = async () => {
 
     await initializeDatabase();
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`✓ GigShield backend running on http://localhost:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`\nAPI Routes:`);
-      console.log(`  POST   /api/partners/register`);
-      console.log(`  POST   /api/partners/verify-otp`);
-      console.log(`  GET    /api/partners/profile (protected)`);
+      console.log(`  POST   /api/auth/register`);
+      console.log(`  POST   /api/auth/login`);
+      console.log(`  GET    /api/auth/profile (protected)`);
       console.log(`  POST   /api/premium/quote`);
       console.log(`  POST   /api/premium/enroll (protected)`);
       console.log(`  GET    /api/claims/my-claims (protected)`);
+      console.log(`  GET    /api/claims/history (protected)`);
       console.log(`  POST   /api/claims/manual (protected)`);
-      console.log(`  GET    /api/payouts/my-payouts`);
+      console.log(`  GET    /api/payouts/my-payouts (protected)`);
       console.log(`  GET    /api/demo/trigger-scenario`);
       console.log(`  POST   /api/risk/evaluate`);
       console.log(`  POST   /api/fraud/analyze`);
       console.log(`  POST   /api/disruption/simulate`);
       console.log(`  GET    /api/disruption/active`);
+      console.log(`  POST   /api/disruption/weather-scan`);
       console.log(`  POST   /api/webhook/payment-success`);
-      console.log(`  GET    /api/notifications/feed`);
+      console.log(`  GET    /api/notifications/feed (protected)`);
+      console.log(`  GET    /api/admin/rules (protected)`);
       console.log(`\n🤖 AI FEATURES (NEW):`);
       console.log(`  POST   /api/ai/ai-quote (Dynamic ML-based pricing)`);
       console.log(`  POST   /api/ai/disruption-check (5+ automated triggers)`);
@@ -116,6 +142,8 @@ const startServer = async () => {
       console.log(`  GET    /api/ai/ai-features-summary`);
       console.log(`  GET    /api/health`);
     });
+
+    startWeatherMonitoring();
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

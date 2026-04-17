@@ -29,17 +29,9 @@ router.get('/my-claims', verifyToken, async (req, res, next) => {
 });
 
 // GET /history
-router.get('/history', async (req, res, next) => {
+router.get('/history', verifyToken, async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'];
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: 'userId is required',
-      });
-    }
+    const userId = req.user.id;
 
     const result = await query(
       'SELECT * FROM claims WHERE user_id = ? OR partner_id = ? ORDER BY created_at DESC LIMIT 50',
@@ -163,7 +155,7 @@ router.post('/auto-trigger', async (req, res, next) => {
 });
 
 // GET /timeline/:claimId
-router.get('/timeline/:claimId', async (req, res, next) => {
+router.get('/timeline/:claimId', verifyToken, async (req, res, next) => {
   try {
     const claim = await getClaimById(req.params.claimId);
 
@@ -190,7 +182,7 @@ router.get('/timeline/:claimId', async (req, res, next) => {
 });
 
 // POST /:claimId/process
-router.post('/:claimId/process', async (req, res, next) => {
+router.post('/:claimId/process', verifyToken, async (req, res, next) => {
   try {
     const result = await processExistingClaim(req.params.claimId, req.body || {});
     res.status(200).json({
