@@ -16,6 +16,7 @@ import type {
   GigShieldSimulationResult,
 } from "@/types";
 import {
+  API_ORIGIN,
   analyzeFraud,
   evaluateRisk,
   getActiveDisruptions,
@@ -456,7 +457,7 @@ export default function GigShieldDashboardPage() {
   }, []);
 
   useEffect(() => {
-    const socket = io("http://localhost:3001", {
+    const socket = io(API_ORIGIN, {
       transports: ["websocket"],
     });
 
@@ -660,7 +661,7 @@ export default function GigShieldDashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_42%),linear-gradient(180deg,_#07111f_0%,_#0f172a_45%,_#0e2233_100%)] dark:text-white transition-colors">
-      <div className="mx-auto flex max-w-[1440px] gap-6 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-3 pb-16 pt-4 sm:px-6 lg:flex-row lg:gap-6 lg:px-8">
         <SaaSSidebar />
         <div className="min-w-0 flex-1">
         <div className="mb-6 flex items-center justify-between gap-3 rounded-[28px] border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-950/80 px-5 py-4 text-slate-900 dark:text-white shadow-[0_20px_60px_-30px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_-30px_rgba(0,0,0,0.65)] backdrop-blur">

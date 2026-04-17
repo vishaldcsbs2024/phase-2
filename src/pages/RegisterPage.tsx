@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShieldAlert, ArrowRight, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 const WORK_TYPES = ["Delivery", "Driver", "Construction", "Domestic Help", "Street Vendor", "Other"];
 const CITIES = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Pune", "Kolkata", "Ahmedabad"];
@@ -35,6 +36,26 @@ export default function RegisterPage() {
       navigate("/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed. Please try again.";
+
+      const isNetworkUnreachable =
+        message.toLowerCase().includes("unable to connect") ||
+        message.toLowerCase().includes("failed to fetch") ||
+        message.toLowerCase().includes("network");
+
+      if (isNetworkUnreachable) {
+        login({
+          id: `demo-${Date.now()}`,
+          name: form.name || "Demo User",
+          phone: form.phone || "0000000000",
+          workType: form.workType || "Delivery",
+          weeklyIncome: Number(form.weeklyIncome) || 5000,
+          city: form.city || "Chennai",
+          token: "demo-offline-token",
+        });
+        toast.message("Backend unavailable: continuing in demo mode");
+        navigate("/dashboard");
+        return;
+      }
 
       // If phone already exists, seamlessly sign in with the deterministic onboarding password.
       if (message.toLowerCase().includes("already registered")) {
@@ -75,7 +96,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 pb-24 md:pb-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 pb-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center gap-2 justify-center mb-8">
@@ -165,7 +186,7 @@ export default function RegisterPage() {
             </div>
           )}
 
-          <div className="flex gap-3 mt-6 md:static fixed left-0 right-0 bottom-0 p-4 bg-background/95 backdrop-blur border-t border-border md:p-0 md:bg-transparent md:border-0 md:backdrop-blur-0">
+          <div className="mt-6 flex gap-3 border-t border-border pt-4">
             {step > 1 && (
               <Button variant="outline" onClick={() => { setError(null); setStep(s => s - 1); }} className="flex-1 h-11">
                 <ArrowLeft className="h-4 w-4 mr-1" /> Back

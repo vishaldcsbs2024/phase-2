@@ -16,6 +16,22 @@ import type {
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+const resolveApiOrigin = () => {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return "http://localhost:3001";
+};
+
+const API_ORIGIN = resolveApiOrigin();
+
 const CLAIMS_KEY = "pyw_claims";
 const ALERTS_KEY = "pyw_alerts";
 
@@ -287,7 +303,7 @@ export async function simulateTrigger(type: string): Promise<{ claim: Claim; ale
 
 export async function getAutoPaycheckDecision(payload: AutoPaycheckRequest): Promise<AutoPaycheckDecision> {
   try {
-    const response = await fetch("http://localhost:3001/api/ai/auto-paycheck", {
+    const response = await fetch(`${API_ORIGIN}/api/ai/auto-paycheck`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

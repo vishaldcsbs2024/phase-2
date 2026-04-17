@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/AuthContext";
-import { getClaims, getPayouts } from "@/services/gigshieldApi";
+import { API_ORIGIN, getClaims, getPayouts } from "@/services/gigshieldApi";
 import SaaSSidebar from "@/components/layout/SaaSSidebar";
 
 const formatCurrency = (value: number) =>
@@ -81,7 +81,7 @@ export default function GigShieldClaimsPage() {
   }, [claims, eventFilter, searchTerm, sortBy, statusFilter]);
 
   useEffect(() => {
-    const socket = io("http://localhost:3001", {
+    const socket = io(API_ORIGIN, {
       transports: ["websocket"],
     });
 
@@ -102,7 +102,7 @@ export default function GigShieldClaimsPage() {
 
   return (
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-slate-100 text-slate-900">
-      <div className="mx-auto flex min-h-[100dvh] max-w-[1440px] gap-6 px-4 pb-14 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[100dvh] max-w-[1440px] flex-col gap-4 px-3 pb-14 pt-4 sm:px-6 lg:flex-row lg:gap-6 lg:px-8">
         <SaaSSidebar />
         <div className="min-w-0 flex-1">
         <div className="mb-6 flex items-center justify-between gap-4 rounded-[28px] border border-white/15 bg-slate-950/80 px-5 py-4 text-white shadow-[0_20px_60px_-30px_rgba(0,0,0,0.65)] backdrop-blur">

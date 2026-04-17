@@ -5,7 +5,7 @@ import { CheckCircle2, BellRing, Loader2, AlertTriangle } from "lucide-react";
 import DashboardShell from "@/components/layout/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { clearNotifications, getNotifications, markNotificationRead } from "@/services/gigshieldApi";
+import { API_ORIGIN, clearNotifications, getNotifications, markNotificationRead } from "@/services/gigshieldApi";
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
@@ -19,7 +19,7 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   useEffect(() => {
-    const socket = io("http://localhost:3001", { transports: ["websocket"] });
+    const socket = io(API_ORIGIN, { transports: ["websocket"] });
     const refresh = () => void queryClient.invalidateQueries({ queryKey: ["gigshield-notifications-page"] });
 
     socket.on("notification:new", refresh);

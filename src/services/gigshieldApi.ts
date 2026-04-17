@@ -10,7 +10,21 @@ import type {
   GigShieldPayout,
 } from "@/types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+const resolveApiOrigin = () => {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return "http://localhost:3001";
+};
+
+export const API_ORIGIN = resolveApiOrigin();
 
 function getStoredUser(): User | null {
   try {
@@ -32,10 +46,15 @@ function buildHeaders(extraHeaders: Record<string, string> = {}) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: buildHeaders((options.headers as Record<string, string>) || {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_ORIGIN}${path}`, {
+      ...options,
+      headers: buildHeaders((options.headers as Record<string, string>) || {}),
+    });
+  } catch {
+    throw new Error("Unable to connect to server. Please ensure backend is running and reachable from this device.");
+  }
 
   const json = await response.json().catch(() => null);
 
